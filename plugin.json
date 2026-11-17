@@ -1,0 +1,111 @@
+{
+  "protocol_version": 3,
+  "min_core_protocol_version": 3,
+  "id": "firetv",
+  "label": "Amazon Fire TV",
+  "version": "0.1.0",
+  "executable": "bin/couch-plugin-firetv",
+  "capabilities": [
+    {
+      "id": "up",
+      "label": "Up"
+    },
+    {
+      "id": "down",
+      "label": "Down"
+    },
+    {
+      "id": "left",
+      "label": "Left"
+    },
+    {
+      "id": "right",
+      "label": "Right"
+    },
+    {
+      "id": "ok",
+      "label": "OK / select"
+    },
+    {
+      "id": "back",
+      "label": "Back"
+    },
+    {
+      "id": "home",
+      "label": "Home"
+    },
+    {
+      "id": "power-on",
+      "label": "Power on / wake"
+    },
+    {
+      "id": "play-pause",
+      "label": "Play / pause"
+    },
+    {
+      "id": "x:menu",
+      "label": "Menu"
+    },
+    {
+      "id": "x:fast-forward",
+      "label": "Fast forward"
+    },
+    {
+      "id": "x:rewind",
+      "label": "Rewind"
+    }
+  ],
+  "settings": [
+    {
+      "id": "host",
+      "label": "Fire TV IP address or hostname",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "id": "friendly_name",
+      "label": "Name shown during pairing",
+      "kind": "text",
+      "required": false,
+      "default": "Couch Fire TV"
+    }
+  ],
+  "supports_inputs": false,
+  "pairing": {
+    "required": true,
+    "max_seconds": 120
+  },
+  "keep_alive": true,
+  "presentation": [
+    {
+      "kind": "command_group",
+      "title": "Navigation",
+      "commands": [
+        "up",
+        "down",
+        "left",
+        "right",
+        "ok",
+        "back",
+        "home",
+        "x:menu"
+      ]
+    },
+    {
+      "kind": "command_group",
+      "title": "Media",
+      "commands": [
+        "play-pause",
+        "x:fast-forward",
+        "x:rewind"
+      ]
+    },
+    {
+      "kind": "command_group",
+      "title": "Power",
+      "commands": [
+        "power-on"
+      ]
+    }
+  ]
+}

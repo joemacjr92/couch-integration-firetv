@@ -1,0 +1,25 @@
+[package]
+name = "couch-firetv"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Couch integration for compatible Amazon Fire TV devices"
+
+# Keep this integration as its own small workspace. It consumes the SDK and
+# plugin runtime from the adjacent couch-sdk-reference checkout.
+[workspace]
+
+[lib]
+name = "couch_firetv"
+path = "src/lib.rs"
+
+[[bin]]
+name = "couch-plugin-firetv"
+path = "src/bin/couch-plugin-firetv.rs"
+
+[dependencies]
+couch-sdk = { path = "../couch-sdk-reference/clients/couch-sdk" }
+couch-plugin = { path = "../couch-sdk-reference/clients/couch-plugin" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

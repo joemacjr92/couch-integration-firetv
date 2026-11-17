@@ -1,0 +1,6 @@
+/target/
+/build/
+/.vscode/
+
+# Local build and sideload helper; not part of the public source release
+/tools/build-deploy.sh
