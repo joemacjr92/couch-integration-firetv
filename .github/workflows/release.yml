@@ -1,0 +1,213 @@
+
+cd /mnt/c/Users/josep/Projects/CouchOS/couch-firetv-couch-plugin || exit 1
+
+mkdir -p .github/workflows
+
+cat > .github/workflows/release.yml <<'EOF'
+name: Build Fire TV Integration
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Integration version to build (example: 0.1.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out Fire TV integration
+        uses: actions/checkout@v4
+        with:
+          path: couch-firetv-couch-plugin
+
+      - name: Check out CouchOS SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Couch-OS/couch
+          ref: e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81
+          path: couch-sdk-reference
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-musleabihf
+
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Install Zig 0.15.2
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
+
+          VERSION=0.15.2
+          NAME=zig-x86_64-linux-$VERSION
+          SHA=02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239
+
+          mkdir -p build/toolchains
+
+          curl -fsSL \
+            "https://ziglang.org/download/$VERSION/$NAME.tar.xz" \
+            -o "build/toolchains/$NAME.tar.xz"
+
+          echo "$SHA  build/toolchains/$NAME.tar.xz" | sha256sum -c -
+
+          tar -xJf "build/toolchains/$NAME.tar.xz" -C build/toolchains
+          rm "build/toolchains/$NAME.tar.xz"
+
+          echo "ZIG=$GITHUB_WORKSPACE/couch-sdk-reference/build/toolchains/$NAME/zig" >> "$GITHUB_ENV"
+
+      - name: Build ARMv7 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
+
+          source tools/arm-cc-env.sh
+
+          cd clients
+
+          cargo build \
+            --release \
+            --locked \
+            --target armv7-unknown-linux-musleabihf \
+            --manifest-path "$GITHUB_WORKSPACE/couch-firetv-couch-plugin/Cargo.toml"
+
+      - name: Prepare release version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$INPUT_VERSION"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION"
+            echo "Use a version such as 0.1.2"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare signing keys
+        shell: bash
+        env:
+          APK_PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+          APK_PUBLIC_KEY: ${{ secrets.APK_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+
+          test -n "$APK_PRIVATE_KEY"
+          test -n "$APK_PUBLIC_KEY"
+
+          install -d -m 700 "$RUNNER_TEMP/apk-keys"
+
+          printf '%s\n' "$APK_PRIVATE_KEY" \
+            > "$RUNNER_TEMP/apk-keys/developer.rsa"
+
+          printf '%s\n' "$APK_PUBLIC_KEY" \
+            > "$RUNNER_TEMP/apk-keys/developer.rsa.pub"
+
+          chmod 600 "$RUNNER_TEMP/apk-keys/developer.rsa"
+          chmod 644 "$RUNNER_TEMP/apk-keys/developer.rsa.pub"
+
+      - name: Build and sign ARMv7 APK
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          PLUGIN="$GITHUB_WORKSPACE/couch-firetv-couch-plugin"
+          SDK="$GITHUB_WORKSPACE/couch-sdk-reference"
+          OUTPUT="$PLUGIN/build/integrations"
+
+          mkdir -p "$OUTPUT"
+
+          docker run --rm \
+            --platform linux/arm/v7 \
+            -v "$SDK:/work/sdk:ro" \
+            -v "$PLUGIN:/work/plugin:ro" \
+            -v "$RUNNER_TEMP:/work/tmp:rw" \
+            -v "$OUTPUT:/work/out:rw" \
+            -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \
+            -e BUILD_VERSION="$VERSION" \
+            alpine:3.24 sh -eu -c '
+              mkdir -p /root/.abuild
+
+              cp /work/keys/developer.rsa \
+                /root/.abuild/-6afc809d.rsa
+
+              cp /work/keys/developer.rsa.pub \
+                /root/.abuild/-6afc809d.rsa.pub
+
+              chmod 600 /root/.abuild/-6afc809d.rsa
+              chmod 644 /root/.abuild/-6afc809d.rsa.pub
+
+              apk add --no-cache alpine-sdk jq binutils
+
+              cp /root/.abuild/-6afc809d.rsa.pub /etc/apk/keys/
+
+              jq --arg version "$BUILD_VERSION" \
+                ".version = \$version" \
+                /work/plugin/plugin.json > /work/tmp/plugin.json
+
+              sh /work/sdk/tools/integrations/build-apk.sh \
+                firetv \
+                "$BUILD_VERSION" \
+                /work/plugin/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv \
+                /work/tmp/plugin.json \
+                /root/.abuild/-6afc809d.rsa \
+                /work/out
+            '
+
+          APK="$OUTPUT/couch-integration-firetv-$VERSION-r0.apk"
+
+          test -f "$APK"
+
+          APK_ENTRIES="$(tar -tzf "$APK")"
+          printf '%s\n' "$APK_ENTRIES" | grep '^\.SIGN\.RSA\.' >/dev/null
+
+          echo "APK successfully built and signed:"
+          sha256sum "$APK"
+          ls -lh "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: couch-integration-firetv-${{ steps.version.outputs.version }}
+          path: couch-firetv-couch-plugin/build/integrations/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: couch-firetv-couch-plugin/build/integrations/*.apk
+EOF
+
+chmod 644 .github/workflows/release.yml
