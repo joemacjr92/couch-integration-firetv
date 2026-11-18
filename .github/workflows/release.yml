@@ -195,6 +195,7 @@ jobs:
             -v "$RUNNER_TEMP:/work/tmp:rw" \
             -v "$OUTPUT:/work/out:rw" \
             -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \
+            -e VERSION="$VERSION" \
             alpine:3.24 sh -eu -c '
               mkdir -p /root/.abuild
 
