@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "channel": "preview",
+  "sequence": 1,
+  "issued": "2026-11-18T14:28:57Z",
+  "expires": "2026-12-18T14:28:57Z",
+  "index": {
+    "path": "APKINDEX.tar.gz",
+    "size": 1021,
+    "sha256": "f8e2754f299f13468541776209cbc3a536bdc96d1d1333f05d6ddca6b754158b"
+  },
+  "packages": [
+    {
+      "id": "firetv",
+      "version": "0.1.1",
+      "apk": "couch-integration-firetv-0.1.1-r0.apk",
+      "size": 1901762,
+      "sha256": "2a51ba5fb98dfa1ea01a2953dfaa946234c1dadc8da3a2c7e22e0a88bcebc70d",
+      "protocol_version": 5,
+      "min_core_protocol_version": 5
+    },
+    {
+      "id": "firetv",
+      "version": "0.1.2",
+      "apk": "couch-integration-firetv-0.1.2-r0.apk",
+      "size": 1901751,
+      "sha256": "bbbad635a959aaeb6c40546b79b6f9db4e4e621f952a94a1fd4638477ef84de0",
+      "protocol_version": 5,
+      "min_core_protocol_version": 5
+    }
+  ]
+}
