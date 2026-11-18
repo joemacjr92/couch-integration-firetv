@@ -59,6 +59,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Create as the runner so the following metadata step can write here.
+          mkdir -p "$RUNNER_TEMP/repository/armv7"
+
           docker run --rm --platform linux/arm/v7 \
             -v "$GITHUB_WORKSPACE/couch-sdk-reference:/work/sdk:ro" \
             -v "$RUNNER_TEMP/retained-apks:/work/packages:ro" \
