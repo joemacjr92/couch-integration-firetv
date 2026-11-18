@@ -269,7 +269,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: couch-integration-firetv/build/repository
-          destination_dir: preview
+          destination_dir: .
           commit_message: "Publish Fire TV integration feed"
 
       - name: Publish GitHub Release
