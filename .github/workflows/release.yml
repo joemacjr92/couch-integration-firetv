@@ -32,6 +32,13 @@ jobs:
           ref: e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81
           path: couch-sdk-reference
 
+      - name: Check out existing package feed
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: existing-feed
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -188,17 +195,86 @@ jobs:
           sha256sum "$APK"
           ls -lh "$APK"
 
+      - name: Build and sign package repository
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          PLUGIN="$GITHUB_WORKSPACE/couch-integration-firetv"
+          SDK="$GITHUB_WORKSPACE/couch-sdk-reference"
+          OUTPUT="$PLUGIN/build/integrations"
+          FEED="$PLUGIN/build/repository/preview"
+          APK_NAME="couch-integration-firetv-$VERSION-r0.apk"
+
+          mkdir -p "$FEED"
+
+          # Carry forward previously published APK versions.
+          if [[ -d "$GITHUB_WORKSPACE/existing-feed/preview/armv7" ]]; then
+            find "$GITHUB_WORKSPACE/existing-feed/preview/armv7" \
+              -maxdepth 1 \
+              -type f \
+              -name '*.apk' \
+              ! -name "$APK_NAME" \
+              -exec cp -n {} "$OUTPUT/" \;
+          fi
+
+          docker run --rm \
+            --platform linux/arm/v7 \
+            -v "$SDK:/work/sdk:ro" \
+            -v "$OUTPUT:/work/packages:ro" \
+            -v "$FEED:/work/repository:rw" \
+            -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \
+            alpine:3.24 sh -eu -c '
+              mkdir -p /root/.abuild
+
+              cp /work/keys/developer.rsa \
+                /root/.abuild/-6afc809d.rsa
+
+              cp /work/keys/developer.rsa.pub \
+                /root/.abuild/-6afc809d.rsa.pub
+
+              chmod 600 /root/.abuild/-6afc809d.rsa
+              chmod 644 /root/.abuild/-6afc809d.rsa.pub
+
+              apk add --no-cache alpine-sdk
+
+              sh /work/sdk/tools/integrations/build-repository.sh \
+                /root/.abuild/-6afc809d.rsa \
+                /work/packages \
+                /work/repository
+            '
+
+          INDEX="$FEED/armv7/APKINDEX.tar.gz"
+          test -f "$INDEX"
+
+          tar -tzf "$INDEX" | grep '^\.SIGN\.RSA\.' >/dev/null
+
+          echo "Signed repository index:"
+          sha256sum "$INDEX"
+          ls -lh "$FEED/armv7"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: couch-integration-firetv-${{ steps.version.outputs.version }}
-          path: couch-integration-firetv/build/integrations/*.apk
+          path: couch-integration-firetv/build/integrations/couch-integration-firetv-${{ steps.version.outputs.version }}-r0.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish package feed to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: couch-integration-firetv/build/repository
+          destination_dir: preview
+          commit_message: "Publish Fire TV integration feed"
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: couch-integration-firetv/build/integrations/*.apk
+          files: couch-integration-firetv/build/integrations/couch-integration-firetv-${{ steps.version.outputs.version }}-r0.apk
