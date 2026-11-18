@@ -208,7 +208,10 @@ jobs:
           FEED="$PLUGIN/build/repository/preview"
           APK_NAME="couch-integration-firetv-$VERSION-r0.apk"
 
-          mkdir -p "$FEED"
+          # Pre-create the architecture directory as the GitHub Actions runner.
+          # The Docker repository builder runs as root; creating this directory
+          # here preserves runner ownership so feed.json can be written afterward.
+          mkdir -p "$FEED/armv7"
 
           # Carry forward previously published APK versions.
           if [[ -d "$GITHUB_WORKSPACE/existing-feed/preview/armv7" ]]; then
