@@ -72,7 +72,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "couch-firetv"
+name = "couch-integration-firetv"
 version = "0.1.0"
 dependencies = [
  "couch-plugin",
