@@ -1,0 +1,96 @@
+name: Client admission
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firetv-admission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Validate immutable SDK pin and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\\2/p' Cargo.toml | sort -u)"
+          test -n "$revision"
+          test "$(printf '%s\\n' "$revision" | wc -l)" -eq 1
+          test "$revision" = "e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81"
+
+          jq -e '
+            .schema == 1 and
+            .protocol_version == 3 and
+            .id == "firetv" and
+            .tier == "preview" and
+            .synthetic == false and
+            .cargo_manifest == "Cargo.toml" and
+            .cargo_package == "couch-integration-firetv" and
+            .binary == "couch-plugin-firetv" and
+            .manifest == "plugin.json"
+          ' integration.json >/dev/null
+
+          jq -e '
+            .protocol_version == 3 and
+            .min_core_protocol_version == 3 and
+            .id == "firetv" and
+            .executable == "bin/couch-plugin-firetv"
+          ' plugin.json >/dev/null
+
+          test "$(grep -c 'couch-.*rev = ' Cargo.toml)" -eq 2
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Test host build
+        run: cargo test --locked --all-targets
+
+  armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-musleabihf
+
+      - name: Check out Couch tooling at the pinned SDK revision
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\\2/p' Cargo.toml | sort -u | head -n1)"
+          git init -q "$RUNNER_TEMP/couch"
+          git -C "$RUNNER_TEMP/couch" fetch -q --depth 1 https://github.com/Couch-OS/couch.git "$revision"
+          git -C "$RUNNER_TEMP/couch" checkout -q FETCH_HEAD
+
+      - name: Build static ARMv7 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source="$PWD"
+          cd "$RUNNER_TEMP/couch"
+          tools/fetch-zig.sh
+          . tools/arm-cc-env.sh
+          cd "$source"
+
+          cargo build --locked --release --target armv7-unknown-linux-musleabihf --bin couch-plugin-firetv
+          file target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv | grep -q 'statically linked'
