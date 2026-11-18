@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "channel": "preview",
-  "sequence": 2,
-  "issued": "2026-11-18T19:06:13Z",
-  "expires": "2026-12-18T19:06:13Z",
+  "sequence": 3,
+  "issued": "2026-11-18T22:10:16Z",
+  "expires": "2026-12-18T22:10:16Z",
   "index": {
     "path": "APKINDEX.tar.gz",
-    "size": 1059,
-    "sha256": "d62bee8a0ce26afb36d1c3fa40df5feaa69972ce2eadba3d7a5fd629c3454d38"
+    "size": 1097,
+    "sha256": "82d182f136a275a68690bfcb25689f0863a58677592e91a031c83fa89e84cc24"
   },
   "packages": [
     {
@@ -16,8 +16,8 @@
       "apk": "couch-integration-firetv-0.1.1-r0.apk",
       "size": 1901762,
       "sha256": "2a51ba5fb98dfa1ea01a2953dfaa946234c1dadc8da3a2c7e22e0a88bcebc70d",
-      "protocol_version": 5,
-      "min_core_protocol_version": 5
+      "protocol_version": 3,
+      "min_core_protocol_version": 3
     },
     {
       "id": "firetv",
@@ -25,8 +25,8 @@
       "apk": "couch-integration-firetv-0.1.2-r0.apk",
       "size": 1901751,
       "sha256": "bbbad635a959aaeb6c40546b79b6f9db4e4e621f952a94a1fd4638477ef84de0",
-      "protocol_version": 5,
-      "min_core_protocol_version": 5
+      "protocol_version": 3,
+      "min_core_protocol_version": 3
     },
     {
       "id": "firetv",
@@ -34,8 +34,17 @@
       "apk": "couch-integration-firetv-0.1.3-r0.apk",
       "size": 1901806,
       "sha256": "4cc12358dd5afd2d2113a9a63e4e4f444e1e42f23b5de36910ece86f8e7626a9",
-      "protocol_version": 5,
-      "min_core_protocol_version": 5
+      "protocol_version": 3,
+      "min_core_protocol_version": 3
+    },
+    {
+      "id": "firetv",
+      "version": "0.1.4",
+      "apk": "couch-integration-firetv-0.1.4-r0.apk",
+      "size": 1901158,
+      "sha256": "541df8b36b8b8e3a44752094b1465b48f14f6f757a8eab9d2d33a8a16798ca10",
+      "protocol_version": 3,
+      "min_core_protocol_version": 3
     }
   ]
 }
