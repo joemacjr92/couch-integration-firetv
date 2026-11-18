@@ -227,6 +227,18 @@ jobs:
           APK_ENTRIES="$(tar -tzf "$APK")"
           printf '%s\n' "$APK_ENTRIES" | grep '^\.SIGN\.RSA\.' >/dev/null
 
+          # Inspect the actual APK payload, not only the source tree. Require
+          # the packaged manifest and executable to be byte-for-byte identical
+          # to the inputs used for the host handshake and ARM cross-build.
+          MANIFEST_ENTRY="usr/lib/couch/integrations/firetv/manifest.json"
+          BINARY_ENTRY="usr/lib/couch/integrations/firetv/bin/couch-plugin-firetv"
+          printf '%s\n' "$APK_ENTRIES" | grep -Fx "$MANIFEST_ENTRY" >/dev/null
+          printf '%s\n' "$APK_ENTRIES" | grep -Fx "$BINARY_ENTRY" >/dev/null
+          tar -xOf "$APK" "$MANIFEST_ENTRY" > "$RUNNER_TEMP/apk-manifest.json"
+          tar -xOf "$APK" "$BINARY_ENTRY" > "$RUNNER_TEMP/apk-binary"
+          cmp "$PLUGIN/plugin.json" "$RUNNER_TEMP/apk-manifest.json"
+          cmp "$PLUGIN/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" "$RUNNER_TEMP/apk-binary"
+
           echo "APK successfully built and signed:"
           sha256sum "$APK"
           ls -lh "$APK"
