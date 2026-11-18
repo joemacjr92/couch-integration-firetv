@@ -247,13 +247,65 @@ jobs:
             '
 
           INDEX="$FEED/armv7/APKINDEX.tar.gz"
+          REPO_ARCH="$FEED/armv7"
+          PRIVATE_KEY="$RUNNER_TEMP/apk-keys/developer.rsa"
           test -f "$INDEX"
 
           tar -tzf "$INDEX" | grep '^\.SIGN\.RSA\.' >/dev/null
 
-          echo "Signed repository index:"
-          sha256sum "$INDEX"
-          ls -lh "$FEED/armv7"
+          # Signed metadata binds the index and every published APK to this
+          # repository key. Carry the sequence forward to prevent feed rollback.
+          PREVIOUS="$GITHUB_WORKSPACE/existing-feed/preview/armv7/feed.json"
+          SEQUENCE=1
+          if [[ -f "$PREVIOUS" ]]; then
+            PREVIOUS_SEQUENCE="$(jq -er '.sequence | numbers' "$PREVIOUS")"
+            SEQUENCE="$((PREVIOUS_SEQUENCE + 1))"
+          fi
+
+          ISSUED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          EXPIRES="$(date -u -d '+30 days' +'%Y-%m-%dT%H:%M:%SZ')"
+          INDEX_SIZE="$(stat -c '%s' "$INDEX")"
+          INDEX_SHA256="$(sha256sum "$INDEX" | cut -d ' ' -f 1)"
+
+          PACKAGES="$RUNNER_TEMP/feed-packages.json"
+          : > "$PACKAGES"
+          for APK in "$REPO_ARCH"/couch-integration-*.apk; do
+            [[ -f "$APK" ]] || continue
+            APK_NAME="$(basename "$APK")"
+            APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+            APK_VERSION="${APK_VERSION%-r0.apk}"
+            APK_SIZE="$(stat -c '%s' "$APK")"
+            APK_SHA256="$(sha256sum "$APK" | cut -d ' ' -f 1)"
+
+            jq -n \
+              --arg id firetv \
+              --arg version "$APK_VERSION" \
+              --arg apk "$APK_NAME" \
+              --argjson size "$APK_SIZE" \
+              --arg sha256 "$APK_SHA256" \
+              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:3,min_core_protocol_version:3}' \
+              >> "$PACKAGES"
+          done
+
+          jq -s . "$PACKAGES" > "$RUNNER_TEMP/feed-packages-array.json"
+          jq -n \
+            --arg channel preview \
+            --argjson sequence "$SEQUENCE" \
+            --arg issued "$ISSUED" \
+            --arg expires "$EXPIRES" \
+            --arg index_path APKINDEX.tar.gz \
+            --argjson index_size "$INDEX_SIZE" \
+            --arg index_sha256 "$INDEX_SHA256" \
+            --slurpfile packages "$RUNNER_TEMP/feed-packages-array.json" \
+            '{schema:1,channel:$channel,sequence:$sequence,issued:$issued,expires:$expires,index:{path:$index_path,size:$index_size,sha256:$index_sha256},packages:$packages[0]}' \
+            > "$REPO_ARCH/feed.json"
+
+          openssl dgst -sha256 -sign "$PRIVATE_KEY" \
+            -out "$REPO_ARCH/feed.json.sig" "$REPO_ARCH/feed.json"
+
+          echo "Signed repository index and metadata:"
+          sha256sum "$INDEX" "$REPO_ARCH/feed.json" "$REPO_ARCH/feed.json.sig"
+          ls -lh "$REPO_ARCH"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
