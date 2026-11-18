@@ -3,7 +3,7 @@
   "min_core_protocol_version": 3,
   "id": "firetv",
   "label": "Amazon Fire TV",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "executable": "bin/couch-plugin-firetv",
   "capabilities": [
     {
