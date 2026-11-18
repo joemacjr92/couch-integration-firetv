@@ -94,10 +94,7 @@ impl DeviceClient for FireTvClient {
         Err(Error::Unpaired)
     }
 
-    fn connect_with(
-        settings: &FireTvSettings,
-        credential: Option<&Credential>,
-    ) -> Result<Self> {
+    fn connect_with(settings: &FireTvSettings, credential: Option<&Credential>) -> Result<Self> {
         settings.validate()?;
         let token = credential
             .and_then(|value| value.get().get("token"))
@@ -175,12 +172,16 @@ impl PairFlow for FireTvPairFlow {
                 let credential = Credential::new(json!({ "token": token }))?;
                 Ok(PairStep::done(credential, "Paired with Amazon Fire TV"))
             }
-            Err(Error::Rejected) => Ok(PairStep::failed(PairFailure::WrongCode)
-                .because("The Fire TV rejected that PIN")),
+            Err(Error::Rejected) => {
+                Ok(PairStep::failed(PairFailure::WrongCode)
+                    .because("The Fire TV rejected that PIN"))
+            }
             Err(Error::Timeout) => Ok(PairStep::failed(PairFailure::TimedOut)
                 .because("The Fire TV pairing request timed out")),
-            Err(Error::Transport) => Ok(PairStep::failed(PairFailure::Unreachable)
-                .because("Could not reach the Fire TV")),
+            Err(Error::Transport) => {
+                Ok(PairStep::failed(PairFailure::Unreachable)
+                    .because("Could not reach the Fire TV"))
+            }
             Err(_) => Ok(PairStep::failed(PairFailure::Refused)
                 .because("The Fire TV could not complete pairing")),
         }
@@ -312,11 +313,7 @@ impl FireTvApi {
 
     fn wake(&self) -> Result<()> {
         let url = format!("http://{}:8009/apps/FireTVRemote", self.authority());
-        let response = self
-            .client
-            .post(url)
-            .send()
-            .map_err(map_http_error)?;
+        let response = self.client.post(url).send().map_err(map_http_error)?;
         check_status(response.status())
     }
 }
