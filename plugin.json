@@ -1,6 +1,6 @@
 {
-  "protocol_version": 3,
-  "min_core_protocol_version": 3,
+  "protocol_version": 5,
+  "min_core_protocol_version": 5,
   "id": "firetv",
   "label": "Amazon Fire TV",
   "version": "0.1.0",

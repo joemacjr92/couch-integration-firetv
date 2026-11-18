@@ -73,23 +73,6 @@ jobs:
 
           echo "ZIG=$GITHUB_WORKSPACE/couch-sdk-reference/build/toolchains/$NAME/zig" >> "$GITHUB_ENV"
 
-      - name: Build ARMv7 binary
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
-
-          source tools/arm-cc-env.sh
-
-          cd clients
-
-          cargo build \
-            --release \
-            --locked \
-            --target armv7-unknown-linux-musleabihf \
-            --manifest-path "$GITHUB_WORKSPACE/couch-integration-firetv/Cargo.toml"
-
       - name: Prepare release version
         id: version
         shell: bash
@@ -111,6 +94,64 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Embed release version in source manifest
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          PLUGIN="$GITHUB_WORKSPACE/couch-integration-firetv"
+          MANIFEST="$PLUGIN/plugin.json"
+          TEMP="$RUNNER_TEMP/plugin.json"
+
+          # The executable embeds plugin.json at compile time. Set the release
+          # version before compiling, then use this exact file in the APK.
+          jq -e --arg version "$VERSION" '
+            .version = $version
+          ' "$MANIFEST" > "$TEMP"
+          mv "$TEMP" "$MANIFEST"
+
+          jq -e --arg version "$VERSION" '
+            .id == "firetv" and
+            .version == $version and
+            .executable == "bin/couch-plugin-firetv" and
+            .protocol_version == 5 and
+            .min_core_protocol_version == 5
+          ' "$MANIFEST" >/dev/null
+
+      - name: Test executable admission handshake
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="$GITHUB_WORKSPACE/couch-sdk-reference"
+          PLUGIN="$GITHUB_WORKSPACE/couch-integration-firetv"
+
+          # Start the compiled executable through Couch's real package host.
+          # This catches embedded/package manifest mismatches before cross-build.
+          cd "$SDK/clients"
+          cargo test --locked \
+            --manifest-path "$PLUGIN/Cargo.toml" \
+            --test admission
+
+      - name: Build ARMv7 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
+
+          source tools/arm-cc-env.sh
+
+          cd clients
+
+          cargo build \
+            --release \
+            --locked \
+            --target armv7-unknown-linux-musleabihf \
+            --manifest-path "$GITHUB_WORKSPACE/couch-integration-firetv/Cargo.toml"
 
       - name: Prepare signing keys
         shell: bash
@@ -154,7 +195,6 @@ jobs:
             -v "$RUNNER_TEMP:/work/tmp:rw" \
             -v "$OUTPUT:/work/out:rw" \
             -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \
-            -e BUILD_VERSION="$VERSION" \
             alpine:3.24 sh -eu -c '
               mkdir -p /root/.abuild
 
@@ -171,15 +211,11 @@ jobs:
 
               cp /root/.abuild/-6afc809d.rsa.pub /etc/apk/keys/
 
-              jq --arg version "$BUILD_VERSION" \
-                ".version = \$version" \
-                /work/plugin/plugin.json > /work/tmp/plugin.json
-
               sh /work/sdk/tools/integrations/build-apk.sh \
                 firetv \
-                "$BUILD_VERSION" \
+                "$VERSION" \
                 /work/plugin/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv \
-                /work/tmp/plugin.json \
+                /work/plugin/plugin.json \
                 /root/.abuild/-6afc809d.rsa \
                 /work/out
             '
@@ -190,6 +226,18 @@ jobs:
 
           APK_ENTRIES="$(tar -tzf "$APK")"
           printf '%s\n' "$APK_ENTRIES" | grep '^\.SIGN\.RSA\.' >/dev/null
+
+          # Inspect the actual APK payload, not only the source tree. Require
+          # the packaged manifest and executable to be byte-for-byte identical
+          # to the inputs used for the host handshake and ARM cross-build.
+          MANIFEST_ENTRY="usr/lib/couch/integrations/firetv/manifest.json"
+          BINARY_ENTRY="usr/lib/couch/integrations/firetv/bin/couch-plugin-firetv"
+          printf '%s\n' "$APK_ENTRIES" | grep -Fx "$MANIFEST_ENTRY" >/dev/null
+          printf '%s\n' "$APK_ENTRIES" | grep -Fx "$BINARY_ENTRY" >/dev/null
+          tar -xOf "$APK" "$MANIFEST_ENTRY" > "$RUNNER_TEMP/apk-manifest.json"
+          tar -xOf "$APK" "$BINARY_ENTRY" > "$RUNNER_TEMP/apk-binary"
+          cmp "$PLUGIN/plugin.json" "$RUNNER_TEMP/apk-manifest.json"
+          cmp "$PLUGIN/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" "$RUNNER_TEMP/apk-binary"
 
           echo "APK successfully built and signed:"
           sha256sum "$APK"
@@ -208,7 +256,10 @@ jobs:
           FEED="$PLUGIN/build/repository/preview"
           APK_NAME="couch-integration-firetv-$VERSION-r0.apk"
 
-          mkdir -p "$FEED"
+          # Pre-create the architecture directory as the GitHub Actions runner.
+          # The Docker repository builder runs as root; creating this directory
+          # here preserves runner ownership so feed.json can be written afterward.
+          mkdir -p "$FEED/armv7"
 
           # Carry forward previously published APK versions.
           if [[ -d "$GITHUB_WORKSPACE/existing-feed/preview/armv7" ]]; then
@@ -247,13 +298,65 @@ jobs:
             '
 
           INDEX="$FEED/armv7/APKINDEX.tar.gz"
+          REPO_ARCH="$FEED/armv7"
+          PRIVATE_KEY="$RUNNER_TEMP/apk-keys/developer.rsa"
           test -f "$INDEX"
 
           tar -tzf "$INDEX" | grep '^\.SIGN\.RSA\.' >/dev/null
 
-          echo "Signed repository index:"
-          sha256sum "$INDEX"
-          ls -lh "$FEED/armv7"
+          # Signed metadata binds the index and every published APK to this
+          # repository key. Carry the sequence forward to prevent feed rollback.
+          PREVIOUS="$GITHUB_WORKSPACE/existing-feed/preview/armv7/feed.json"
+          SEQUENCE=1
+          if [[ -f "$PREVIOUS" ]]; then
+            PREVIOUS_SEQUENCE="$(jq -er '.sequence | numbers' "$PREVIOUS")"
+            SEQUENCE="$((PREVIOUS_SEQUENCE + 1))"
+          fi
+
+          ISSUED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          EXPIRES="$(date -u -d '+30 days' +'%Y-%m-%dT%H:%M:%SZ')"
+          INDEX_SIZE="$(stat -c '%s' "$INDEX")"
+          INDEX_SHA256="$(sha256sum "$INDEX" | cut -d ' ' -f 1)"
+
+          PACKAGES="$RUNNER_TEMP/feed-packages.json"
+          : > "$PACKAGES"
+          for APK in "$REPO_ARCH"/couch-integration-*.apk; do
+            [[ -f "$APK" ]] || continue
+            APK_NAME="$(basename "$APK")"
+            APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+            APK_VERSION="${APK_VERSION%-r0.apk}"
+            APK_SIZE="$(stat -c '%s' "$APK")"
+            APK_SHA256="$(sha256sum "$APK" | cut -d ' ' -f 1)"
+
+            jq -n \
+              --arg id firetv \
+              --arg version "$APK_VERSION" \
+              --arg apk "$APK_NAME" \
+              --argjson size "$APK_SIZE" \
+              --arg sha256 "$APK_SHA256" \
+              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:5,min_core_protocol_version:5}' \
+              >> "$PACKAGES"
+          done
+
+          jq -s . "$PACKAGES" > "$RUNNER_TEMP/feed-packages-array.json"
+          jq -n \
+            --arg channel preview \
+            --argjson sequence "$SEQUENCE" \
+            --arg issued "$ISSUED" \
+            --arg expires "$EXPIRES" \
+            --arg index_path APKINDEX.tar.gz \
+            --argjson index_size "$INDEX_SIZE" \
+            --arg index_sha256 "$INDEX_SHA256" \
+            --slurpfile packages "$RUNNER_TEMP/feed-packages-array.json" \
+            '{schema:1,channel:$channel,sequence:$sequence,issued:$issued,expires:$expires,index:{path:$index_path,size:$index_size,sha256:$index_sha256},packages:$packages[0]}' \
+            > "$REPO_ARCH/feed.json"
+
+          openssl dgst -sha256 -sign "$PRIVATE_KEY" \
+            -out "$REPO_ARCH/feed.json.sig" "$REPO_ARCH/feed.json"
+
+          echo "Signed repository index and metadata:"
+          sha256sum "$INDEX" "$REPO_ARCH/feed.json" "$REPO_ARCH/feed.json.sig"
+          ls -lh "$REPO_ARCH"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
