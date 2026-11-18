@@ -1,6 +1,7 @@
 #!/bin/sh
-# Exercise the production Couch integration installer against a disposable
-# ARMv7 APK and repository. This never uses a release key or a device.
+# Exercise signed APK admission with the production Couch installer against
+# a disposable ARMv7 package. Repository installation is covered separately.
+# This never uses a release key or a device.
 set -eu
 
 usage() {
@@ -21,7 +22,6 @@ done
 [ -x "$binary" ] || { echo "Fire TV binary is not executable: $binary" >&2; exit 1; }
 [ -x "$confd" ] || { echo "couch-confd is not executable: $confd" >&2; exit 1; }
 [ -f "$sdk/tools/integrations/build-apk.sh" ] || { echo "pinned SDK package tools are missing" >&2; exit 1; }
-[ -f "$sdk/tools/integrations/build-repository.sh" ] || { echo "pinned SDK repository builder is missing" >&2; exit 1; }
 [ -f "$manifest" ] || { echo "plugin manifest is missing: $manifest" >&2; exit 1; }
 [ ! -e "$output" ] || { echo "output directory must not already exist: $output" >&2; exit 1; }
 
@@ -34,7 +34,7 @@ docker run --rm --platform linux/arm/v7 \
     -v "$sdk:/work/sdk:ro" \
     -v "$output:/out:rw" \
     alpine:3.24 sh -eu -c '
-        apk add --no-cache alpine-sdk binutils jq busybox-extras >/dev/null
+        apk add --no-cache alpine-sdk binutils jq >/dev/null
 
         # Generate a key that exists only inside this disposable container.
         abuild-keygen -a -n >/dev/null
@@ -64,35 +64,6 @@ docker run --rm --platform linux/arm/v7 \
         /work/input/couch-confd integrations --root /tmp/firetv-sideload list \
             | grep -Fx "firetv $version"
 
-        # Build and serve a signed local repository, then install through the
-        # repository path rather than treating a sideload as equivalent.
-        sh /work/sdk/tools/integrations/build-repository.sh \
-            "$key" /out/packages /out/repository
-        busybox httpd -f -p 18080 -h /out/repository/armv7 \
-            >/out/httpd.log 2>&1 &
-        server=$!
-        trap "kill $server 2>/dev/null || true" EXIT HUP INT TERM
-
-        ready=0
-        attempt=0
-        while [ "$attempt" -lt 30 ]; do
-            if wget -q -O /dev/null http://127.0.0.1:18080/APKINDEX.tar.gz; then
-                ready=1
-                break
-            fi
-            attempt=$((attempt + 1))
-            sleep 1
-        done
-        test "$ready" = 1
-
-        /work/input/couch-confd integrations \
-            --root /tmp/firetv-repository \
-            --keys-dir /root/.abuild \
-            install-repository couch-integration-firetv \
-            --repository http://127.0.0.1:18080 >/out/repository-install.log 2>&1
-        /work/input/couch-confd integrations --root /tmp/firetv-repository list \
-            | grep -Fx "firetv $version"
-
         # An empty trust directory must reject the otherwise valid signed APK.
         mkdir -m 700 /tmp/untrusted-keys
         if /work/input/couch-confd integrations \
@@ -116,10 +87,8 @@ docker run --rm --platform linux/arm/v7 \
         fi
         test ! -e /tmp/firetv-tampered/state/firetv
 
-        sha256sum "$apk_file" /out/repository/armv7/APKINDEX.tar.gz \
-            > /out/checksums.txt
+        sha256sum "$apk_file" > /out/checksums.txt
         printf "%s\n" "signed sideload: passed" \
-            "signed repository install: passed" \
             "untrusted signature rejection: passed" \
             "tampered APK rejection: passed" > /out/receipt.txt
     '
