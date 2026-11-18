@@ -5,13 +5,6 @@ on:
     tags:
       - 'v*'
 
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Integration version to build (example: 0.1.2)'
-        required: true
-        type: string
-
 permissions:
   contents: write
 
@@ -76,20 +69,13 @@ jobs:
       - name: Prepare release version
         id: version
         shell: bash
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="$INPUT_VERSION"
-          fi
-
+          VERSION="${GITHUB_REF_NAME#v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version: $VERSION"
-            echo "Use a version such as 0.1.2"
+            echo "Invalid version tag: $GITHUB_REF_NAME"
+            echo "Use a tag such as v0.1.2"
             exit 1
           fi
 
@@ -358,14 +344,6 @@ jobs:
           echo "Signed repository index and metadata:"
           sha256sum "$INDEX" "$REPO_ARCH/feed.json" "$REPO_ARCH/feed.json.sig"
           ls -lh "$REPO_ARCH"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: couch-integration-firetv-${{ steps.version.outputs.version }}
-          path: couch-integration-firetv/build/integrations/couch-integration-firetv-${{ steps.version.outputs.version }}-r0.apk
-          if-no-files-found: error
-          retention-days: 90
 
       - name: Publish package feed to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
