@@ -13,12 +13,26 @@ concurrency:
   group: firetv-admission-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  COUCH_SDK_REVISION: e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81
+
 jobs:
   admission:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check out pinned Couch SDK beside integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_dir="$GITHUB_WORKSPACE/../couch-sdk-reference"
+          git init -q "$sdk_dir"
+          git -C "$sdk_dir" fetch -q --depth 1 https://github.com/Couch-OS/couch.git "$COUCH_SDK_REVISION"
+          git -C "$sdk_dir" checkout -q FETCH_HEAD
+          actual="$(git -C "$sdk_dir" rev-parse HEAD)"
+          test "$actual" = "$COUCH_SDK_REVISION"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -29,10 +43,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\2/p' Cargo.toml | sort -u)"
-          test -n "$revision"
-          test "$(printf '%s\n' "$revision" | wc -l)" -eq 1
-          test "$revision" = "e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81"
+          test "$(git -C "$GITHUB_WORKSPACE/../couch-sdk-reference" rev-parse HEAD)" = "$COUCH_SDK_REVISION"
 
           jq -e '
             .schema == 1 and
@@ -53,8 +64,6 @@ jobs:
             .executable == "bin/couch-plugin-firetv"
           ' plugin.json >/dev/null
 
-          test "$(grep -c 'couch-.*rev = ' Cargo.toml)" -eq 2
-
       - name: Check formatting
         run: cargo fmt -- --check
 
@@ -67,32 +76,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: armv7-unknown-linux-musleabihf
-
-      - name: Check out Couch tooling at the pinned SDK revision
+      - name: Check out pinned Couch SDK beside integration
         shell: bash
         run: |
           set -euo pipefail
+          sdk_dir="$GITHUB_WORKSPACE/../couch-sdk-reference"
+          git init -q "$sdk_dir"
+          git -C "$sdk_dir" fetch -q --depth 1 https://github.com/Couch-OS/couch.git "$COUCH_SDK_REVISION"
+          git -C "$sdk_dir" checkout -q FETCH_HEAD
+          actual="$(git -C "$sdk_dir" rev-parse HEAD)"
+          test "$actual" = "$COUCH_SDK_REVISION"
 
-          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\2/p' Cargo.toml | sort -u | head -n1)"
-          git init -q "$RUNNER_TEMP/couch"
-          git -C "$RUNNER_TEMP/couch" fetch -q --depth 1 https://github.com/Couch-OS/couch.git "$revision"
-          git -C "$RUNNER_TEMP/couch" checkout -q FETCH_HEAD
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-musleabihf
 
       - name: Build static ARMv7 binary
         shell: bash
         run: |
           set -euo pipefail
 
-          source="$PWD"
-          cd "$RUNNER_TEMP/couch"
+          source="$GITHUB_WORKSPACE"
+          sdk_dir="$GITHUB_WORKSPACE/../couch-sdk-reference"
+          cd "$sdk_dir"
           tools/fetch-zig.sh
           . tools/arm-cc-env.sh
 
-          # Cargo must run from SDK clients/ so it loads the SDK's target
-          # linker configuration (clients/.cargo/config.toml).
+          # Cargo runs from SDK clients/ to load its target linker config.
           cd clients
           cargo build --locked --release \
             --manifest-path "$source/Cargo.toml" \
