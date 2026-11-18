@@ -23,3 +23,6 @@ couch-plugin = { path = "../couch-sdk-reference/clients/couch-plugin" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+couch-plugin = { path = "../couch-sdk-reference/clients/couch-plugin", features = ["testing"] }
