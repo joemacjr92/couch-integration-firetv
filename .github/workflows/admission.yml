@@ -72,7 +72,7 @@ jobs:
 
   armv7:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -111,3 +111,53 @@ jobs:
             --bin couch-plugin-firetv
 
           file "$source/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" | grep -q 'statically linked'
+
+      - name: Build static ARMv7 couch-confd
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sdk_dir="$GITHUB_WORKSPACE/../couch-sdk-reference"
+          cd "$sdk_dir"
+          source tools/arm-cc-env.sh
+
+          # Build the pinned SDK's real integration installer for the same
+          # target architecture as the package and the Couch device.
+          cd daemon
+          cargo build --locked --release \
+            --manifest-path "$sdk_dir/daemon/Cargo.toml" \
+            --package couch-confd \
+            --target armv7-unknown-linux-musleabihf
+
+          file "$sdk_dir/daemon/target/armv7-unknown-linux-musleabihf/release/couch-confd" | grep -q 'statically linked'
+
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Exercise signed package admission
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source="$GITHUB_WORKSPACE"
+          sdk_dir="$GITHUB_WORKSPACE/../couch-sdk-reference"
+          output="$RUNNER_TEMP/firetv-package-smoke"
+
+          sh "$source/tools/smoke-package.sh" \
+            "$source/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" \
+            "$sdk_dir/daemon/target/armv7-unknown-linux-musleabihf/release/couch-confd" \
+            "$sdk_dir" \
+            "$source/plugin.json" \
+            "$output"
+
+      - name: Upload package admission smoke receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firetv-package-admission-smoke
+          path: |
+            ${{ runner.temp }}/firetv-package-smoke
+          if-no-files-found: ignore
+          retention-days: 14
