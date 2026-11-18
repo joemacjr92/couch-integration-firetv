@@ -29,14 +29,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\2/p' Cargo.toml | sort -u)"
+          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\\2/p' Cargo.toml | sort -u)"
           test -n "$revision"
-          test "$(printf '%s\n' "$revision" | wc -l)" -eq 1
+          test "$(printf '%s\\n' "$revision" | wc -l)" -eq 1
           test "$revision" = "e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81"
 
           jq -e '
             .schema == 1 and
-            .protocol_version == 3 and
+            .protocol_version == 5 and
             .id == "firetv" and
             .tier == "preview" and
             .synthetic == false and
@@ -47,8 +47,8 @@ jobs:
           ' integration.json >/dev/null
 
           jq -e '
-            .protocol_version == 3 and
-            .min_core_protocol_version == 3 and
+            .protocol_version == 5 and
+            .min_core_protocol_version == 5 and
             .id == "firetv" and
             .executable == "bin/couch-plugin-firetv"
           ' plugin.json >/dev/null
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\2/p' Cargo.toml | sort -u | head -n1)"
+          revision="$(sed -nE 's/.*couch-(sdk|plugin).*rev = "([0-9a-f]{40})".*/\\2/p' Cargo.toml | sort -u | head -n1)"
           git init -q "$RUNNER_TEMP/couch"
           git -C "$RUNNER_TEMP/couch" fetch -q --depth 1 https://github.com/Couch-OS/couch.git "$revision"
           git -C "$RUNNER_TEMP/couch" checkout -q FETCH_HEAD
@@ -94,10 +94,10 @@ jobs:
           # Cargo must run from SDK clients/ so it loads the SDK's target
           # linker configuration (clients/.cargo/config.toml).
           cd clients
-          cargo build --locked --release \
-            --manifest-path "$source/Cargo.toml" \
-            --target-dir "$source/target" \
-            --target armv7-unknown-linux-musleabihf \
+          cargo build --locked --release \\
+            --manifest-path "$source/Cargo.toml" \\
+            --target-dir "$source/target" \\
+            --target armv7-unknown-linux-musleabihf \\
             --bin couch-plugin-firetv
 
           file "$source/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" | grep -q 'statically linked'
