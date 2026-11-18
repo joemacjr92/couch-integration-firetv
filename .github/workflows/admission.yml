@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -151,13 +150,3 @@ jobs:
             "$sdk_dir" \
             "$source/plugin.json" \
             "$output"
-
-      - name: Upload package admission smoke receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: firetv-package-admission-smoke
-          path: |
-            ${{ runner.temp }}/firetv-package-smoke
-          if-no-files-found: ignore
-          retention-days: 14
