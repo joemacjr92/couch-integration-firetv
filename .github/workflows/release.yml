@@ -73,23 +73,6 @@ jobs:
 
           echo "ZIG=$GITHUB_WORKSPACE/couch-sdk-reference/build/toolchains/$NAME/zig" >> "$GITHUB_ENV"
 
-      - name: Build ARMv7 binary
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
-
-          source tools/arm-cc-env.sh
-
-          cd clients
-
-          cargo build \
-            --release \
-            --locked \
-            --target armv7-unknown-linux-musleabihf \
-            --manifest-path "$GITHUB_WORKSPACE/couch-integration-firetv/Cargo.toml"
-
       - name: Prepare release version
         id: version
         shell: bash
@@ -111,6 +94,64 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Embed release version in source manifest
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          PLUGIN="$GITHUB_WORKSPACE/couch-integration-firetv"
+          MANIFEST="$PLUGIN/plugin.json"
+          TEMP="$RUNNER_TEMP/plugin.json"
+
+          # The executable embeds plugin.json at compile time. Set the release
+          # version before compiling, then use this exact file in the APK.
+          jq -e --arg version "$VERSION" '
+            .version = $version
+          ' "$MANIFEST" > "$TEMP"
+          mv "$TEMP" "$MANIFEST"
+
+          jq -e --arg version "$VERSION" '
+            .id == "firetv" and
+            .version == $version and
+            .executable == "bin/couch-plugin-firetv" and
+            .protocol_version == 5 and
+            .min_core_protocol_version == 5
+          ' "$MANIFEST" >/dev/null
+
+      - name: Test executable admission handshake
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="$GITHUB_WORKSPACE/couch-sdk-reference"
+          PLUGIN="$GITHUB_WORKSPACE/couch-integration-firetv"
+
+          # Start the compiled executable through Couch's real package host.
+          # This catches embedded/package manifest mismatches before cross-build.
+          cd "$SDK/clients"
+          cargo test --locked \
+            --manifest-path "$PLUGIN/Cargo.toml" \
+            --test admission
+
+      - name: Build ARMv7 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$GITHUB_WORKSPACE/couch-sdk-reference"
+
+          source tools/arm-cc-env.sh
+
+          cd clients
+
+          cargo build \
+            --release \
+            --locked \
+            --target armv7-unknown-linux-musleabihf \
+            --manifest-path "$GITHUB_WORKSPACE/couch-integration-firetv/Cargo.toml"
 
       - name: Prepare signing keys
         shell: bash
@@ -154,7 +195,6 @@ jobs:
             -v "$RUNNER_TEMP:/work/tmp:rw" \
             -v "$OUTPUT:/work/out:rw" \
             -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \
-            -e BUILD_VERSION="$VERSION" \
             alpine:3.24 sh -eu -c '
               mkdir -p /root/.abuild
 
@@ -171,15 +211,11 @@ jobs:
 
               cp /root/.abuild/-6afc809d.rsa.pub /etc/apk/keys/
 
-              jq --arg version "$BUILD_VERSION" \
-                ".version = \$version" \
-                /work/plugin/plugin.json > /work/tmp/plugin.json
-
               sh /work/sdk/tools/integrations/build-apk.sh \
                 firetv \
-                "$BUILD_VERSION" \
+                "$VERSION" \
                 /work/plugin/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv \
-                /work/tmp/plugin.json \
+                /work/plugin/plugin.json \
                 /root/.abuild/-6afc809d.rsa \
                 /work/out
             '
