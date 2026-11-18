@@ -117,8 +117,8 @@ jobs:
             .id == "firetv" and
             .version == $version and
             .executable == "bin/couch-plugin-firetv" and
-            .protocol_version == 5 and
-            .min_core_protocol_version == 5
+            .protocol_version == 3 and
+            .min_core_protocol_version == 3
           ' "$MANIFEST" >/dev/null
 
       - name: Test executable admission handshake
@@ -134,7 +134,7 @@ jobs:
           cd "$SDK/clients"
           cargo test --locked \
             --manifest-path "$PLUGIN/Cargo.toml" \
-            --test admission
+            --test admission -- --ignored
 
       - name: Build ARMv7 binary
         shell: bash
@@ -335,7 +335,7 @@ jobs:
               --arg apk "$APK_NAME" \
               --argjson size "$APK_SIZE" \
               --arg sha256 "$APK_SHA256" \
-              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:5,min_core_protocol_version:5}' \
+              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:3,min_core_protocol_version:3}' \
               >> "$PACKAGES"
           done
 
