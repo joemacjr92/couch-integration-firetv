@@ -90,7 +90,14 @@ jobs:
           cd "$RUNNER_TEMP/couch"
           tools/fetch-zig.sh
           . tools/arm-cc-env.sh
-          cd "$source"
 
-          cargo build --locked --release --target armv7-unknown-linux-musleabihf --bin couch-plugin-firetv
-          file target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv | grep -q 'statically linked'
+          # Cargo must run from SDK clients/ so it loads the SDK's target
+          # linker configuration (clients/.cargo/config.toml).
+          cd clients
+          cargo build --locked --release \
+            --manifest-path "$source/Cargo.toml" \
+            --target-dir "$source/target" \
+            --target armv7-unknown-linux-musleabihf \
+            --bin couch-plugin-firetv
+
+          file "$source/target/armv7-unknown-linux-musleabihf/release/couch-plugin-firetv" | grep -q 'statically linked'
