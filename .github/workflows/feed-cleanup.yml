@@ -1,0 +1,148 @@
+name: One-time preview feed cleanup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out current package feed
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: existing-feed
+
+      - name: Check out CouchOS SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Couch-OS/couch
+          ref: e7fc36cd90faa6d6b2e3e8a733c28a3fed833d81
+          path: couch-sdk-reference
+
+      - name: Prepare retained APKs and signing keys
+        shell: bash
+        env:
+          APK_PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+          APK_PUBLIC_KEY: ${{ secrets.APK_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+
+          SOURCE="$GITHUB_WORKSPACE/existing-feed/preview/armv7"
+          PACKAGES="$RUNNER_TEMP/retained-apks"
+          KEYS="$RUNNER_TEMP/apk-keys"
+          mkdir -p "$PACKAGES" "$KEYS"
+
+          test -n "$APK_PRIVATE_KEY"
+          test -n "$APK_PUBLIC_KEY"
+          printf '%s\\n' "$APK_PRIVATE_KEY" > "$KEYS/developer.rsa"
+          printf '%s\\n' "$APK_PUBLIC_KEY" > "$KEYS/developer.rsa.pub"
+          chmod 600 "$KEYS/developer.rsa"
+          chmod 644 "$KEYS/developer.rsa.pub"
+
+          for version in 0.1.3 0.1.4; do
+            apk="$SOURCE/couch-integration-firetv-$version-r0.apk"
+            test -s "$apk"
+            cp "$apk" "$PACKAGES/"
+          done
+
+          # Fail closed if either retained APK is absent or any other APK
+          # accidentally enters the package directory.
+          test "$(find "$PACKAGES" -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 2
+          ls -lh "$PACKAGES"
+
+      - name: Rebuild and sign APK index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm --platform linux/arm/v7 \\
+            -v "$GITHUB_WORKSPACE/couch-sdk-reference:/work/sdk:ro" \\
+            -v "$RUNNER_TEMP/retained-apks:/work/packages:ro" \\
+            -v "$RUNNER_TEMP/apk-keys:/work/keys:ro" \\
+            -v "$RUNNER_TEMP/repository:/work/repository:rw" \\
+            alpine:3.24 sh -eu -c '
+              mkdir -p /root/.abuild
+              cp /work/keys/developer.rsa /root/.abuild/-6afc809d.rsa
+              cp /work/keys/developer.rsa.pub /root/.abuild/-6afc809d.rsa.pub
+              chmod 600 /root/.abuild/-6afc809d.rsa
+              chmod 644 /root/.abuild/-6afc809d.rsa.pub
+              apk add --no-cache alpine-sdk
+              cp /root/.abuild/-6afc809d.rsa.pub /etc/apk/keys/
+              sh /work/sdk/tools/integrations/build-repository.sh \\
+                /work/keys/developer.rsa /work/packages /work/repository
+            '
+
+      - name: Generate and sign feed metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE="$GITHUB_WORKSPACE/existing-feed/preview/armv7"
+          OUTPUT="$RUNNER_TEMP/repository/armv7"
+          PRIVATE_KEY="$RUNNER_TEMP/apk-keys/developer.rsa"
+          PREVIOUS="$SOURCE/feed.json"
+
+          PREVIOUS_SEQUENCE="$(jq -er '.sequence | numbers' "$PREVIOUS")"
+          SEQUENCE="$((PREVIOUS_SEQUENCE + 1))"
+          ISSUED="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          EXPIRES="$(date -u -d '+30 days' +'%Y-%m-%dT%H:%M:%SZ')"
+          INDEX="$OUTPUT/APKINDEX.tar.gz"
+          INDEX_SIZE="$(stat -c '%s' "$INDEX")"
+          INDEX_SHA256="$(sha256sum "$INDEX" | cut -d ' ' -f 1)"
+
+          PACKAGES="$RUNNER_TEMP/feed-packages.jsonl"
+          : > "$PACKAGES"
+          for APK in "$OUTPUT"/couch-integration-firetv-*.apk; do
+            test -f "$APK"
+            APK_NAME="$(basename "$APK")"
+            APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+            APK_VERSION="${APK_VERSION%-r0.apk}"
+            case "$APK_VERSION" in
+              0.1.3|0.1.4) ;;
+              *) echo "Unexpected APK in cleaned feed: $APK_NAME" >&2; exit 1 ;;
+            esac
+            APK_SIZE="$(stat -c '%s' "$APK")"
+            APK_SHA256="$(sha256sum "$APK" | cut -d ' ' -f 1)"
+            jq -n \\
+              --arg id firetv \\
+              --arg version "$APK_VERSION" \\
+              --arg apk "$APK_NAME" \\
+              --argjson size "$APK_SIZE" \\
+              --arg sha256 "$APK_SHA256" \\
+              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:3,min_core_protocol_version:3}' \\
+              >> "$PACKAGES"
+          done
+
+          test "$(wc -l < "$PACKAGES")" -eq 2
+          jq -s . "$PACKAGES" > "$RUNNER_TEMP/feed-packages-array.json"
+          jq -n \\
+            --arg channel preview \\
+            --argjson sequence "$SEQUENCE" \\
+            --arg issued "$ISSUED" \\
+            --arg expires "$EXPIRES" \\
+            --arg index_path APKINDEX.tar.gz \\
+            --argjson index_size "$INDEX_SIZE" \\
+            --arg index_sha256 "$INDEX_SHA256" \\
+            --slurpfile packages "$RUNNER_TEMP/feed-packages-array.json" \\
+            '{schema:1,channel:$channel,sequence:$sequence,issued:$issued,expires:$expires,index:{path:$index_path,size:$index_size,sha256:$index_sha256},packages:$packages[0]}' \\
+            > "$OUTPUT/feed.json"
+
+          openssl dgst -sha256 -sign "$PRIVATE_KEY" \\
+            -out "$OUTPUT/feed.json.sig" "$OUTPUT/feed.json"
+
+          echo "Cleaned feed contents:"
+          ls -lh "$OUTPUT"
+          jq -r '.packages[].version' "$OUTPUT/feed.json"
+
+      - name: Publish cleaned package feed
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ${{ runner.temp }}/repository
+          destination_dir: .
+          commit_message: "Remove obsolete Fire TV packages 0.1.1 and 0.1.2"
