@@ -283,7 +283,7 @@ jobs:
               --arg apk "$APK_NAME" \
               --argjson size "$APK_SIZE" \
               --arg sha256 "$APK_SHA256" \
-              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:3,min_core_protocol_version:3}' \
+              '{id:$id,version:$version,apk:$apk,size:$size,sha256:$sha256,protocol_version:5,min_core_protocol_version:5}' \
               >> "$PACKAGES"
           done
 
