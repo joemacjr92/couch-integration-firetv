@@ -29,6 +29,12 @@ jobs:
         with:
           path: couch-integration-firetv
 
+      - name: Check out Fire TV workflow validation tools
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: firetv-workflow-tools
+
       - name: Check out CouchOS SDK
         uses: actions/checkout@v4
         with:
@@ -195,7 +201,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          bash "$GITHUB_WORKSPACE/couch-integration-firetv/tools/validate-feed-history.sh" \
+          bash "$GITHUB_WORKSPACE/firetv-workflow-tools/tools/validate-feed-history.sh" \
             "$GITHUB_WORKSPACE/existing-feed/preview/armv7" \
             "$GITHUB_WORKSPACE/couch-integration-firetv/keys/firetv-repository-public.pem" \
             "$VERSION"
