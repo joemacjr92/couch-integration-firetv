@@ -4,12 +4,23 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to release (for example v0.1.5)
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: firetv-pages-publish
+  cancel-in-progress: false
+
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
 
     steps:
@@ -26,11 +37,23 @@ jobs:
           path: couch-sdk-reference
 
       - name: Check out existing package feed
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          ref: gh-pages
-          path: existing-feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="$GITHUB_WORKSPACE/couch-integration-firetv"
+          FEED="$GITHUB_WORKSPACE/existing-feed"
+          mkdir -p "$FEED"
+          set +e
+          REMOTE_REF="$(git -C "$SOURCE" ls-remote --heads origin refs/heads/gh-pages 2>"$RUNNER_TEMP/gh-pages-error")"
+          STATUS=$?
+          set -e
+          if [[ "$STATUS" -ne 0 || -z "$REMOTE_REF" ]]; then
+            cat "$RUNNER_TEMP/gh-pages-error" >&2 || true
+            echo "Unable to confirm an existing gh-pages branch; refusing implicit feed bootstrap." >&2
+            exit 1
+          fi
+          git -C "$SOURCE" fetch --no-tags origin refs/heads/gh-pages
+          git -C "$SOURCE" archive FETCH_HEAD | tar -x -C "$FEED"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -69,16 +92,21 @@ jobs:
       - name: Prepare release version
         id: version
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version tag: $GITHUB_REF_NAME"
-            echo "Use a tag such as v0.1.2"
-            exit 1
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="$REQUESTED_TAG"
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release_tag: $TAG" >&2; exit 1; }
+            git -C "$GITHUB_WORKSPACE/couch-integration-firetv" fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
+            git -C "$GITHUB_WORKSPACE/couch-integration-firetv" checkout --detach "$TAG"
+          else
+            TAG="$GITHUB_REF_NAME"
           fi
-
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid version tag: $TAG" >&2; exit 1; }
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Embed release version in source manifest
@@ -160,6 +188,17 @@ jobs:
 
           chmod 600 "$RUNNER_TEMP/apk-keys/developer.rsa"
           chmod 644 "$RUNNER_TEMP/apk-keys/developer.rsa.pub"
+
+      - name: Validate existing signed feed history
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/couch-integration-firetv/tools/validate-feed-history.sh" \
+            "$GITHUB_WORKSPACE/existing-feed/preview/armv7" \
+            "$GITHUB_WORKSPACE/couch-integration-firetv/keys/firetv-repository-public.pem" \
+            "$VERSION"
 
       - name: Build and sign ARMv7 APK
         shell: bash
@@ -355,8 +394,8 @@ jobs:
           commit_message: "Publish Fire TV integration feed"
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: couch-integration-firetv/build/integrations/couch-integration-firetv-${{ steps.version.outputs.version }}-r0.apk
