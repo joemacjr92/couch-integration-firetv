@@ -34,18 +34,20 @@ jq -e '
   .channel == "preview" and
   (.sequence | type == "number" and . >= 1 and . == floor and . < 2147483647) and
   .index.path == "APKINDEX.tar.gz" and
-  (.index.size | type == "number" and . > 0) and
+  (.index.size | type == "number" and . > 0 and . == floor) and
   (.index.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
   (.packages | type == "array" and length > 0) and
   all(.packages[];
     .id == "firetv" and
     .protocol_version == 3 and
     .min_core_protocol_version == 3 and
-    (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
-    (.apk | test("^couch-integration-firetv-[0-9]+\\.[0-9]+\\.[0-9]+-r0\\.apk$")) and
-    (.size | type == "number" and . > 0) and
-    (.sha256 | test("^[0-9a-fA-F]{64}$"))
-  )
+    (.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+    (.apk | type == "string" and test("^couch-integration-firetv-[0-9]+\\.[0-9]+\\.[0-9]+-r0\\.apk$")) and
+    (.size | type == "number" and . > 0 and . == floor) and
+    (.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+  ) and
+  ([.packages[].apk] | unique | length) == (.packages | length) and
+  ([.packages[].version] | unique | length) == (.packages | length)
 ' "$FEED_JSON" >/dev/null || { echo 'ERROR: existing feed metadata failed validation.' >&2; exit 1; }
 
 # Do not renew metadata that was not authenticated by the same signing key.
