@@ -33,12 +33,16 @@ jq -e '
 ' "$FEED" >/dev/null || { echo "ERROR: existing feed metadata failed validation." >&2; exit 1; }
 [[ "$(stat -c '%s' "$INDEX")" == "$(jq -r '.index.size' "$FEED")" ]]
 [[ "$(sha256sum "$INDEX" | awk '{print $1}')" == "$(jq -r '.index.sha256' "$FEED")" ]]
-while IFS=$'\t' read -r APK_NAME EXPECTED_SIZE EXPECTED_SHA; do
+PACKAGE_LIST="${RUNNER_TEMP:-/tmp}/firetv-verified-packages.tsv"
+PACKAGE_LIST_TMP="$(mktemp "${PACKAGE_LIST}.XXXXXX")"
+trap 'rm -f "$PACKAGE_LIST_TMP"' EXIT
+while read -r APK_NAME EXPECTED_SIZE EXPECTED_SHA; do
   APK="$FEED_DIR/$APK_NAME"
   [[ -s "$APK" ]] || { echo "ERROR: historical APK missing: $APK_NAME" >&2; exit 1; }
   [[ "$(stat -c '%s' "$APK")" == "$EXPECTED_SIZE" ]] || { echo "ERROR: historical APK size mismatch: $APK_NAME" >&2; exit 1; }
   [[ "$(sha256sum "$APK" | awk '{print $1}')" == "$EXPECTED_SHA" ]] || { echo "ERROR: historical APK hash mismatch: $APK_NAME" >&2; exit 1; }
 done < <(jq -r '.packages[] | [.apk, (.size|tostring), .sha256] | @tsv' "$FEED")
+jq -r '.packages[] | [.version, .apk, (.size|tostring), .sha256] | @tsv' "$FEED" > "$PACKAGE_LIST_TMP"
 mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
 UNIQUE_COUNT="$(printf '%s\n' "${VERSIONS[@]}" | sort -u | wc -l)"
 [[ "$UNIQUE_COUNT" -eq "${#VERSIONS[@]}" ]] || { echo "ERROR: duplicate versions exist in feed history." >&2; exit 1; }
@@ -50,4 +54,6 @@ elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
   echo "ERROR: release $NEW_VERSION must be newer than existing version $HIGHEST." >&2
   exit 1
 fi
+mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
+trap - EXIT
 echo "Existing Fire TV feed signature, metadata, APK history, and version order verified."
