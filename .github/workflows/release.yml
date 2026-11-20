@@ -268,6 +268,9 @@ jobs:
                 /work/plugin/plugin.json \
                 /root/.abuild/-6afc809d.rsa \
                 /work/out
+
+              apk --keys-dir /etc/apk/keys verify \
+                "/work/out/couch-integration-firetv-$VERSION-r0.apk"
             '
 
           APK="$OUTPUT/couch-integration-firetv-$VERSION-r0.apk"
@@ -344,12 +347,15 @@ jobs:
                 /root/.abuild/-6afc809d.rsa \
                 /work/packages \
                 /work/repository
+
+              apk --keys-dir /etc/apk/keys verify \
+                /work/repository/armv7/APKINDEX.tar.gz
             '
 
           INDEX="$FEED/armv7/APKINDEX.tar.gz"
           REPO_ARCH="$FEED/armv7"
           PRIVATE_KEY="$RUNNER_TEMP/apk-keys/developer.rsa"
-          test -f "$INDEX"
+          test -s "$INDEX"
 
           tar -tzf "$INDEX" | grep '^\.SIGN\.RSA\.' >/dev/null
 
@@ -387,7 +393,9 @@ jobs:
               >> "$PACKAGES"
           done
 
-          jq -s . "$PACKAGES" > "$RUNNER_TEMP/feed-packages-array.json"
+          # A signed feed with no package records is never publishable.
+          jq -s 'if length > 0 then . else error("no Fire TV APKs in feed") end' \
+            "$PACKAGES" > "$RUNNER_TEMP/feed-packages-array.json"
           jq -n \
             --arg channel preview \
             --argjson sequence "$SEQUENCE" \
@@ -402,6 +410,8 @@ jobs:
 
           openssl dgst -sha256 -sign "$PRIVATE_KEY" \
             -out "$REPO_ARCH/feed.json.sig" "$REPO_ARCH/feed.json"
+          openssl dgst -sha256 -verify "$RUNNER_TEMP/apk-keys/developer.rsa.pub" \
+            -signature "$REPO_ARCH/feed.json.sig" "$REPO_ARCH/feed.json"
 
           echo "Signed repository index and metadata:"
           sha256sum "$INDEX" "$REPO_ARCH/feed.json" "$REPO_ARCH/feed.json.sig"
