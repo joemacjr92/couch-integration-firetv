@@ -15,7 +15,7 @@ if [[ "$#" == 4 ]]; then
   ALLOW_EXISTING_VERSION=true
 fi
 
-[[ "$NEW_VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || {
+[[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo "ERROR: invalid release version: $NEW_VERSION" >&2
   exit 1
 }
