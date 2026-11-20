@@ -210,12 +210,19 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          bash "$GITHUB_WORKSPACE/firetv-workflow-tools/tools/validate-feed-history.sh" \
-            "$GITHUB_WORKSPACE/existing-feed/preview/armv7" \
-            "$GITHUB_WORKSPACE/firetv-workflow-tools/keys/firetv-repository-public.pem" \
-            "$VERSION"
+          VALIDATOR=("$GITHUB_WORKSPACE/firetv-workflow-tools/tools/validate-feed-history.sh"
+            "$GITHUB_WORKSPACE/existing-feed/preview/armv7"
+            "$GITHUB_WORKSPACE/firetv-workflow-tools/keys/firetv-repository-public.pem"
+            "$VERSION")
+          # Rebuilding an already-published version is allowed only in an
+          # explicit manual dry run. All publication paths remain strict.
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$DRY_RUN" == "true" ]]; then
+            VALIDATOR+=(--allow-existing-version)
+          fi
+          bash "${VALIDATOR[@]}"
 
       - name: Build and sign ARMv7 APK
         shell: bash
