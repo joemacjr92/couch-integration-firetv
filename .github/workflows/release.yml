@@ -313,12 +313,8 @@ jobs:
 
           # Carry forward only APKs authenticated by the signed feed validator.
           if [[ -s "$RUNNER_TEMP/firetv-verified-packages.tsv" ]]; then
-            while IFS=$'\t' read -r _VERSION PREVIOUS_APK _SIZE _SHA256; do
-              cp -n -- \
-                "$GITHUB_WORKSPACE/existing-feed/preview/armv7/$PREVIOUS_APK" \
-                "$OUTPUT/$PREVIOUS_APK"
-            done < "$RUNNER_TEMP/firetv-verified-packages.tsv"
-          fi
+            while IFS=
+
           docker run --rm \
             --platform linux/arm/v7 \
             -v "$SDK:/work/sdk:ro" \
