@@ -397,7 +397,8 @@ mod tests {
             assert!(settings(host).validate().is_err(), "accepted host {host:?}");
         }
 
-        for friendly_name in ["", "   ", "Living\nRoom", "x".repeat(81).as_str()] {
+        let long_name = "x".repeat(81);
+        for friendly_name in ["", "   ", "Living\nRoom", long_name.as_str()] {
             let invalid = FireTvSettings {
                 host: "10.0.0.21".into(),
                 friendly_name: friendly_name.into(),
