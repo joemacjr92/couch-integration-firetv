@@ -342,6 +342,7 @@ jobs:
               chmod 644 /root/.abuild/-6afc809d.rsa.pub
 
               apk add --no-cache alpine-sdk
+              cp /root/.abuild/-6afc809d.rsa.pub /etc/apk/keys/
 
               sh /work/sdk/tools/integrations/build-repository.sh \
                 /root/.abuild/-6afc809d.rsa \
