@@ -7,6 +7,7 @@
 //! those settings: protocol 3 pairing hands it to Couch as an opaque
 //! `Credential`, which Couch persists in its private per-connection store.
 
+use std::net::{IpAddr, Ipv6Addr};
 use std::time::Duration;
 
 use couch_sdk::{
@@ -34,23 +35,50 @@ fn default_friendly_name() -> String {
     DEFAULT_FRIENDLY_NAME.to_owned()
 }
 
+/// Keep host syntax consistent with the HTP-1 integration: DNS names, IPv4,
+/// and IPv6 are accepted; IPv6 may be bare or bracketed.
+fn valid_host(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 || host.trim() != host {
+        return false;
+    }
+
+    if host.starts_with('[') || host.ends_with(']') {
+        return host
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .and_then(|value| value.parse::<Ipv6Addr>().ok())
+            .is_some();
+    }
+
+    if host.parse::<IpAddr>().is_ok() {
+        return true;
+    }
+
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && label
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            && label
+                .as_bytes()
+                .last()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    })
+}
+
 impl ClientSettings for FireTvSettings {
     const FILE_PREFIX: &'static str = "firetv";
 
     fn validate(&self) -> Result<()> {
-        let host = self.host.trim();
-        let host_ok = !host.is_empty()
-            && host.len() <= 253
-            && host == self.host
-            && host.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']')
-            })
-            && !host.starts_with('.')
-            && !host.ends_with('.');
         let name_ok = !self.friendly_name.trim().is_empty()
             && self.friendly_name.len() <= 80
             && !self.friendly_name.chars().any(char::is_control);
-        if host_ok && name_ok {
+        if valid_host(&self.host) && name_ok {
             Ok(())
         } else {
             Err(Error::Invalid)
@@ -340,27 +368,66 @@ fn check_status(status: StatusCode) -> Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn settings_reject_url_injection_and_control_characters() {
-        let valid = FireTvSettings {
-            host: "10.0.0.21".into(),
-            friendly_name: "Living Room Fire TV".into(),
-        };
-        assert!(valid.validate().is_ok());
+    fn settings(host: &str) -> FireTvSettings {
+        FireTvSettings {
+            host: host.into(),
+            friendly_name: DEFAULT_FRIENDLY_NAME.into(),
+        }
+    }
 
-        for host in ["", " https://10.0.0.21", "10.0.0.21/path", "10.0.0.21\n"] {
+    #[test]
+    fn settings_accept_dns_ipv4_and_ipv6_hosts() {
+        for host in [
+            "10.0.0.21",
+            "firetv.local",
+            "receiver.example.net",
+            "fe80::1",
+            "[fe80::1]",
+        ] {
+            assert!(settings(host).validate().is_ok(), "rejected {host:?}");
+        }
+    }
+
+    #[test]
+    fn settings_reject_invalid_hosts_and_friendly_names() {
+        for host in [
+            "",
+            " https://10.0.0.21",
+            "10.0.0.21/path",
+            "10.0.0.21?query",
+            "10.0.0.21#fragment",
+            "10.0.0.21\\other",
+            "bad..host",
+            "-bad.example",
+            "bad-.example",
+            "bad_host",
+            "[not-ipv6]",
+            "[fe80::1",
+            "fe80::1]",
+            "fe80::zz",
+        ] {
+            assert!(settings(host).validate().is_err(), "accepted host {host:?}");
+        }
+
+        let long_name = "x".repeat(81);
+        for friendly_name in ["", "   ", "Living\nRoom", long_name.as_str()] {
             let invalid = FireTvSettings {
-                host: host.into(),
-                friendly_name: DEFAULT_FRIENDLY_NAME.into(),
+                host: "10.0.0.21".into(),
+                friendly_name: friendly_name.into(),
             };
-            assert!(invalid.validate().is_err(), "accepted host {host:?}");
+            assert!(
+                invalid.validate().is_err(),
+                "accepted name {friendly_name:?}"
+            );
         }
     }
 
     #[test]
     fn ipv6_authority_is_bracketed_for_urls() {
-        let api = FireTvApi::new("fe80::1", None).unwrap();
-        assert_eq!(api.authority(), "[fe80::1]");
+        let bare = FireTvApi::new("fe80::1", None).unwrap();
+        let bracketed = FireTvApi::new("[fe80::1]", None).unwrap();
+        assert_eq!(bare.authority(), "[fe80::1]");
+        assert_eq!(bracketed.authority(), "[fe80::1]");
     }
 
     #[test]
