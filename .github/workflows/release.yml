@@ -202,7 +202,7 @@ jobs:
 
           PRIVATE_DER_SHA256="$(openssl pkey -in "$RUNNER_TEMP/apk-keys/developer.rsa" -pubout -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
           SECRET_PUBLIC_DER_SHA256="$(openssl pkey -pubin -in "$RUNNER_TEMP/apk-keys/developer.rsa.pub" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
-          REPOSITORY_PUBLIC_DER_SHA256="$(openssl pkey -pubin -in "$GITHUB_WORKSPACE/couch-integration-firetv/keys/firetv-repository-public.pem" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+          REPOSITORY_PUBLIC_DER_SHA256="$(openssl pkey -pubin -in "$GITHUB_WORKSPACE/firetv-workflow-tools/keys/firetv-repository-public.pem" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
           test "$PRIVATE_DER_SHA256" = "$SECRET_PUBLIC_DER_SHA256"
           test "$SECRET_PUBLIC_DER_SHA256" = "$REPOSITORY_PUBLIC_DER_SHA256"
 
@@ -214,7 +214,7 @@ jobs:
           set -euo pipefail
           bash "$GITHUB_WORKSPACE/firetv-workflow-tools/tools/validate-feed-history.sh" \
             "$GITHUB_WORKSPACE/existing-feed/preview/armv7" \
-            "$GITHUB_WORKSPACE/couch-integration-firetv/keys/firetv-repository-public.pem" \
+            "$GITHUB_WORKSPACE/firetv-workflow-tools/keys/firetv-repository-public.pem" \
             "$VERSION"
 
       - name: Build and sign ARMv7 APK
