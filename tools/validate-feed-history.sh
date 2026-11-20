@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-usage() { echo "Usage: $0 FEED_ARCH_DIR REPOSITORY_PUBLIC_KEY NEW_VERSION" >&2; exit 64; }
-[[ "$#" == 3 ]] || usage
+usage() { echo "Usage: $0 FEED_ARCH_DIR REPOSITORY_PUBLIC_KEY NEW_VERSION [--allow-existing-version]" >&2; exit 64; }
+[[ "$#" == 3 || "$#" == 4 ]] || usage
 FEED_DIR="$1"; PUBLIC_KEY="$2"; NEW_VERSION="$3"
+ALLOW_EXISTING_VERSION=false
+if [[ "$#" == 4 ]]; then
+  [[ "$4" == "--allow-existing-version" ]] || usage
+  ALLOW_EXISTING_VERSION=true
+fi
 FEED="$FEED_DIR/feed.json"; SIGNATURE="$FEED_DIR/feed.json.sig"; INDEX="$FEED_DIR/APKINDEX.tar.gz"
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "ERROR: invalid release version: $NEW_VERSION" >&2; exit 1; }
 for file in "$FEED" "$SIGNATURE" "$INDEX" "$PUBLIC_KEY"; do
@@ -39,7 +44,10 @@ UNIQUE_COUNT="$(printf '%s\n' "${VERSIONS[@]}" | sort -u | wc -l)"
 [[ "$UNIQUE_COUNT" -eq "${#VERSIONS[@]}" ]] || { echo "ERROR: duplicate versions exist in feed history." >&2; exit 1; }
 HIGHEST="${VERSIONS[-1]}"
 LATEST="$(printf '%s\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
-[[ "$LATEST" == "$NEW_VERSION" && "$NEW_VERSION" != "$HIGHEST" ]] || {
-  echo "ERROR: release $NEW_VERSION must be newer than existing version $HIGHEST." >&2; exit 1;
-}
-echo "Existing Fire TV feed signature, metadata, APKINDEX, APK history, and version order verified."
+if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
+  echo "Dry-run validation: rebuilding existing version $NEW_VERSION; publication remains disabled."
+elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
+  echo "ERROR: release $NEW_VERSION must be newer than existing version $HIGHEST." >&2
+  exit 1
+fi
+echo "Existing Fire TV feed signature, metadata, APK history, and version order verified."
