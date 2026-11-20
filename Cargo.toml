@@ -9,6 +9,13 @@ description = "Couch integration for compatible Amazon Fire TV devices"
 # plugin runtime from the adjacent couch-sdk-reference checkout.
 [workspace]
 
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
 [lib]
 name = "couch_firetv"
 path = "src/lib.rs"
