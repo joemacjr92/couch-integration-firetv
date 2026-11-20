@@ -36,8 +36,8 @@ jq -e '
 PACKAGE_LIST="${RUNNER_TEMP:-/tmp}/firetv-verified-packages.tsv"
 PACKAGE_LIST_TMP="$(mktemp "${PACKAGE_LIST}.XXXXXX")"
 trap 'rm -f "$PACKAGE_LIST_TMP"' EXIT
-: > "$PACKAGE_LIST_TMP"
-while IFS=
+while read -r APK_NAME EXPECTED_SIZE EXPECTED_SHA; do
+  APK="$FEED_DIR/$APK_NAME"
   [[ -s "$APK" ]] || { echo "ERROR: historical APK missing: $APK_NAME" >&2; exit 1; }
   [[ "$(stat -c '%s' "$APK")" == "$EXPECTED_SIZE" ]] || { echo "ERROR: historical APK size mismatch: $APK_NAME" >&2; exit 1; }
   [[ "$(sha256sum "$APK" | awk '{print $1}')" == "$EXPECTED_SHA" ]] || { echo "ERROR: historical APK hash mismatch: $APK_NAME" >&2; exit 1; }
@@ -56,25 +56,4 @@ elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
 fi
 mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
 trap - EXIT
-echo "Existing Fire TV feed signature, metadata, APK history, and version order verified."
-\t' read -r APK_NAME EXPECTED_SIZE EXPECTED_SHA; do
-  APK="$FEED_DIR/$APK_NAME"
-  APK_VERSION="${APK_NAME#couch-integration-firetv-}"
-  APK_VERSION="${APK_VERSION%-r0.apk}"
-  [[ "$APK_NAME" == "couch-integration-firetv-${APK_VERSION}-r0.apk" ]] || { echo "ERROR: invalid historical APK filename: $APK_NAME" >&2; exit 1; }
-  [[ -s "$APK" ]] || { echo "ERROR: historical APK missing: $APK_NAME" >&2; exit 1; }
-  [[ "$(stat -c '%s' "$APK")" == "$EXPECTED_SIZE" ]] || { echo "ERROR: historical APK size mismatch: $APK_NAME" >&2; exit 1; }
-  [[ "$(sha256sum "$APK" | awk '{print $1}')" == "$EXPECTED_SHA" ]] || { echo "ERROR: historical APK hash mismatch: $APK_NAME" >&2; exit 1; }
-done < <(jq -r '.packages[] | [.apk, (.size|tostring), .sha256] | @tsv' "$FEED")
-mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
-UNIQUE_COUNT="$(printf '%s\n' "${VERSIONS[@]}" | sort -u | wc -l)"
-[[ "$UNIQUE_COUNT" -eq "${#VERSIONS[@]}" ]] || { echo "ERROR: duplicate versions exist in feed history." >&2; exit 1; }
-HIGHEST="${VERSIONS[-1]}"
-LATEST="$(printf '%s\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
-if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
-  echo "Dry-run validation: rebuilding existing version $NEW_VERSION; publication remains disabled."
-elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
-  echo "ERROR: release $NEW_VERSION must be newer than existing version $HIGHEST." >&2
-  exit 1
-fi
 echo "Existing Fire TV feed signature, metadata, APK history, and version order verified."
