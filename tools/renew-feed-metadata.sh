@@ -34,6 +34,8 @@ jq -e '
   .channel == "preview" and
   (.sequence | type == "number" and . >= 1 and . == floor and . < 2147483647) and
   .index.path == "APKINDEX.tar.gz" and
+  (.index.size | type == "number" and . > 0) and
+  (.index.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
   (.packages | type == "array" and length > 0) and
   all(.packages[];
     .id == "firetv" and
