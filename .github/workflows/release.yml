@@ -10,6 +10,11 @@ on:
         description: Existing version tag to release (for example v0.1.5)
         required: true
         type: string
+      dry_run:
+        description: Build and validate without publishing the feed or GitHub Release
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -397,6 +402,7 @@ jobs:
           ls -lh "$REPO_ARCH"
 
       - name: Publish package feed to GitHub Pages
+        if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -406,6 +412,7 @@ jobs:
           commit_message: "Publish Fire TV integration feed"
 
       - name: Publish GitHub Release
+        if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
