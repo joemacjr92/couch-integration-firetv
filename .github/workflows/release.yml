@@ -195,6 +195,12 @@ jobs:
           chmod 600 "$RUNNER_TEMP/apk-keys/developer.rsa"
           chmod 644 "$RUNNER_TEMP/apk-keys/developer.rsa.pub"
 
+          PRIVATE_DER_SHA256="$(openssl pkey -in "$RUNNER_TEMP/apk-keys/developer.rsa" -pubout -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+          SECRET_PUBLIC_DER_SHA256="$(openssl pkey -pubin -in "$RUNNER_TEMP/apk-keys/developer.rsa.pub" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+          REPOSITORY_PUBLIC_DER_SHA256="$(openssl pkey -pubin -in "$GITHUB_WORKSPACE/couch-integration-firetv/keys/firetv-repository-public.pem" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+          test "$PRIVATE_DER_SHA256" = "$SECRET_PUBLIC_DER_SHA256"
+          test "$SECRET_PUBLIC_DER_SHA256" = "$REPOSITORY_PUBLIC_DER_SHA256"
+
       - name: Validate existing signed feed history
         shell: bash
         env:
