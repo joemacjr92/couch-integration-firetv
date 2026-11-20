@@ -57,8 +57,14 @@ fn valid_host(host: &str) -> bool {
     host.split('.').all(|label| {
         !label.is_empty()
             && label.len() <= 63
-            && label.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-            && label.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+            && label
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            && label
+                .as_bytes()
+                .last()
+                .is_some_and(u8::is_ascii_alphanumeric)
             && label
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
@@ -371,7 +377,13 @@ mod tests {
 
     #[test]
     fn settings_accept_dns_ipv4_and_ipv6_hosts() {
-        for host in ["10.0.0.21", "firetv.local", "receiver.example.net", "fe80::1", "[fe80::1]"] {
+        for host in [
+            "10.0.0.21",
+            "firetv.local",
+            "receiver.example.net",
+            "fe80::1",
+            "[fe80::1]",
+        ] {
             assert!(settings(host).validate().is_ok(), "rejected {host:?}");
         }
     }
@@ -403,7 +415,10 @@ mod tests {
                 host: "10.0.0.21".into(),
                 friendly_name: friendly_name.into(),
             };
-            assert!(invalid.validate().is_err(), "accepted name {friendly_name:?}");
+            assert!(
+                invalid.validate().is_err(),
+                "accepted name {friendly_name:?}"
+            );
         }
     }
 
