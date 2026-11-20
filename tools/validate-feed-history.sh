@@ -83,7 +83,143 @@ trap 'rm -f "$PACKAGE_LIST_TMP"' EXIT
 jq -er '.packages[] | [.version, .apk, (.size | tostring), .sha256] | @tsv' \
   "$FEED" > "$PACKAGE_LIST_TMP"
 
-while IFS= APK_NAME EXPECTED_SIZE EXPECTED_SHA256; do
+while IFS=
+  APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+  APK_VERSION="${APK_VERSION%-r0.apk}"
+  [[ "$APK_VERSION" == "$METADATA_VERSION" ]] || {
+    printf 'ERROR: feed version %s does not match APK filename %s.\\n' \
+      "$METADATA_VERSION" "$APK_NAME" >&2
+    exit 1
+  }
+  APK_PATH="$FEED_DIR/$APK_NAME"
+  [[ -s "$APK_PATH" ]] || {
+    printf 'ERROR: existing feed APK is missing or empty: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+  APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+  APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+  [[ "$APK_SIZE" == "$EXPECTED_SIZE" && "$APK_SHA256" == "$EXPECTED_SHA256" ]] || {
+    printf 'ERROR: existing feed APK does not match signed metadata: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+done < "$PACKAGE_LIST_TMP"
+
+mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
+HIGHEST="${VERSIONS[-1]}"
+LATEST="$(printf '%s\\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
+if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
+  echo "Manual dry-run validation: rebuilding existing Fire TV version $NEW_VERSION; publishing remains disabled."
+elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
+  echo "ERROR: release $NEW_VERSION must be newer than existing Fire TV version $HIGHEST." >&2
+  exit 1
+fi
+
+mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
+trap - EXIT
+echo "Existing signed Fire TV feed metadata, APKINDEX, APK history, and version order verified."
+\t' read -r METADATA_VERSION APK_NAME EXPECTED_SIZE EXPECTED_SHA256; do
+  APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+  APK_VERSION="${APK_VERSION%-r0.apk}"
+  [[ "$APK_VERSION" == "$METADATA_VERSION" ]] || {
+    printf 'ERROR: feed version %s does not match APK filename %s.\\n' \
+      "$METADATA_VERSION" "$APK_NAME" >&2
+    exit 1
+  }
+  APK_PATH="$FEED_DIR/$APK_NAME"
+  [[ -s "$APK_PATH" ]] || {
+    printf 'ERROR: existing feed APK is missing or empty: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+  APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+  APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+  [[ "$APK_SIZE" == "$EXPECTED_SIZE" && "$APK_SHA256" == "$EXPECTED_SHA256" ]] || {
+    printf 'ERROR: existing feed APK does not match signed metadata: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+done < "$PACKAGE_LIST_TMP"
+
+mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
+HIGHEST="${VERSIONS[-1]}"
+LATEST="$(printf '%s\\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
+if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
+  echo "Manual dry-run validation: rebuilding existing Fire TV version $NEW_VERSION; publishing remains disabled."
+elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
+  echo "ERROR: release $NEW_VERSION must be newer than existing Fire TV version $HIGHEST." >&2
+  exit 1
+fi
+
+mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
+trap - EXIT
+echo "Existing signed Fire TV feed metadata, APKINDEX, APK history, and version order verified."
+\t' read -r METADATA_VERSION APK_NAME EXPECTED_SIZE EXPECTED_SHA256; do
+  APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+  APK_VERSION="${APK_VERSION%-r0.apk}"
+  [[ "$APK_VERSION" == "$METADATA_VERSION" ]] || {
+    printf 'ERROR: feed version %s does not match APK filename %s.\\n' \
+      "$METADATA_VERSION" "$APK_NAME" >&2
+    exit 1
+  }
+  APK_PATH="$FEED_DIR/$APK_NAME"
+  [[ -s "$APK_PATH" ]] || {
+    printf 'ERROR: existing feed APK is missing or empty: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+  APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+  APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+  [[ "$APK_SIZE" == "$EXPECTED_SIZE" && "$APK_SHA256" == "$EXPECTED_SHA256" ]] || {
+    printf 'ERROR: existing feed APK does not match signed metadata: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+done < "$PACKAGE_LIST_TMP"
+
+mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
+HIGHEST="${VERSIONS[-1]}"
+LATEST="$(printf '%s\\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
+if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
+  echo "Manual dry-run validation: rebuilding existing Fire TV version $NEW_VERSION; publishing remains disabled."
+elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
+  echo "ERROR: release $NEW_VERSION must be newer than existing Fire TV version $HIGHEST." >&2
+  exit 1
+fi
+
+mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
+trap - EXIT
+echo "Existing signed Fire TV feed metadata, APKINDEX, APK history, and version order verified."
+\t' read -r METADATA_VERSION APK_NAME EXPECTED_SIZE EXPECTED_SHA256; do
+  APK_VERSION="${APK_NAME#couch-integration-firetv-}"
+  APK_VERSION="${APK_VERSION%-r0.apk}"
+  [[ "$APK_VERSION" == "$METADATA_VERSION" ]] || {
+    printf 'ERROR: feed version %s does not match APK filename %s.\\n' \
+      "$METADATA_VERSION" "$APK_NAME" >&2
+    exit 1
+  }
+  APK_PATH="$FEED_DIR/$APK_NAME"
+  [[ -s "$APK_PATH" ]] || {
+    printf 'ERROR: existing feed APK is missing or empty: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+  APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+  APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+  [[ "$APK_SIZE" == "$EXPECTED_SIZE" && "$APK_SHA256" == "$EXPECTED_SHA256" ]] || {
+    printf 'ERROR: existing feed APK does not match signed metadata: %s\\n' "$APK_NAME" >&2
+    exit 1
+  }
+done < "$PACKAGE_LIST_TMP"
+
+mapfile -t VERSIONS < <(jq -r '.packages[].version' "$FEED" | sort -V)
+HIGHEST="${VERSIONS[-1]}"
+LATEST="$(printf '%s\\n' "$HIGHEST" "$NEW_VERSION" | sort -V | tail -n 1)"
+if [[ "$NEW_VERSION" == "$HIGHEST" && "$ALLOW_EXISTING_VERSION" == true ]]; then
+  echo "Manual dry-run validation: rebuilding existing Fire TV version $NEW_VERSION; publishing remains disabled."
+elif [[ "$LATEST" != "$NEW_VERSION" || "$NEW_VERSION" == "$HIGHEST" ]]; then
+  echo "ERROR: release $NEW_VERSION must be newer than existing Fire TV version $HIGHEST." >&2
+  exit 1
+fi
+
+mv "$PACKAGE_LIST_TMP" "$PACKAGE_LIST"
+trap - EXIT
+echo "Existing signed Fire TV feed metadata, APKINDEX, APK history, and version order verified."
+\t' read -r METADATA_VERSION APK_NAME EXPECTED_SIZE EXPECTED_SHA256; do
   APK_VERSION="${APK_NAME#couch-integration-firetv-}"
   APK_VERSION="${APK_VERSION%-r0.apk}"
   [[ "$APK_VERSION" == "$METADATA_VERSION" ]] || {
