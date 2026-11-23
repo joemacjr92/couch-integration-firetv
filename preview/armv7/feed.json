@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "channel": "preview",
-  "sequence": 3,
-  "issued": "2026-11-18T22:10:16Z",
-  "expires": "2026-12-18T22:10:16Z",
+  "sequence": 4,
+  "issued": "2026-11-23T14:49:48Z",
+  "expires": "2026-12-23T14:49:48Z",
   "index": {
     "path": "APKINDEX.tar.gz",
     "size": 1097,
